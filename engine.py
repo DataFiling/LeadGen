@@ -1,10 +1,9 @@
 import asyncio
 from playwright.async_api import async_playwright
+# Import the specific stealth function from the logic folder of the library
+from playwright_stealth.stealth import stealth
 
 async def run_scrape_logic(zip_code: str):
-    # Import stealth locally inside the function to ensure it's loaded correctly
-    from playwright_stealth import stealth
-    
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=True,
@@ -17,8 +16,11 @@ async def run_scrape_logic(zip_code: str):
         
         page = await context.new_page()
         
-        # Apply stealth
-        await stealth(page)
+        # We are now calling the function we specifically imported above
+        try:
+            await stealth(page)
+        except Exception as e:
+            print(f"Stealth warning: {e}")
         
         url = f"https://www.realtor.com/realestateandhomes-search/{zip_code}"
         
@@ -34,11 +36,9 @@ async def run_scrape_logic(zip_code: str):
                 price_el = await listing.query_selector("[data-label='pc-price']")
                 
                 if address_el and price_el:
-                    addr = await address_el.inner_text()
-                    pri = await price_el.inner_text()
                     leads.append({
-                        "address": addr.strip().replace('\n', ' '),
-                        "price": pri.strip()
+                        "address": (await address_el.inner_text()).strip(),
+                        "price": (await price_el.inner_text()).strip()
                     })
             
             await browser.close()
