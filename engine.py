@@ -1,13 +1,14 @@
 import asyncio
 from playwright.async_api import async_playwright
+# Using the specific function import to avoid module conflicts
 from playwright_stealth import stealth
 
-async def run_real_estate_scraper(zip_code: str):
+async def run_scrape_logic(zip_code: str):
     """
-    Launches a headless browser to scrape property listings from Realtor.com.
+    Handles the browser lifecycle and data extraction.
     """
     async with async_playwright() as p:
-        # Launch Chromium with settings for Linux containers
+        # Configuration for stable cloud deployment
         browser = await p.chromium.launch(
             headless=True,
             args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
@@ -19,18 +20,19 @@ async def run_real_estate_scraper(zip_code: str):
         
         page = await context.new_page()
         
-        # Apply stealth function (NOT the module)
+        # Explicitly apply the stealth function
         await stealth(page)
         
         url = f"https://www.realtor.com/realestateandhomes-search/{zip_code}"
         
         try:
-            # Navigate and wait for content
+            # Navigate to the target ZIP code search
             await page.goto(url, wait_until="domcontentloaded", timeout=60000)
             
-            # Wait for property cards to render
+            # Wait for property cards to be visible
             await page.wait_for_selector("[data-testid='property-card']", timeout=15000)
             
+            # Select the first 10 listings
             listings = await page.query_selector_all("[data-testid='property-card']")
             
             leads = []
@@ -39,12 +41,9 @@ async def run_real_estate_scraper(zip_code: str):
                 price_el = await listing.query_selector("[data-label='pc-price']")
                 
                 if address_el and price_el:
-                    address_text = await address_el.inner_text()
-                    price_text = await price_el.inner_text()
-                    
                     leads.append({
-                        "address": address_text.strip().replace('\n', ' '),
-                        "price": price_text.strip(),
+                        "address": (await address_el.inner_text()).strip().replace('\n', ' '),
+                        "price": (await price_el.inner_text()).strip(),
                         "status": "Active"
                     })
             
@@ -53,4 +52,4 @@ async def run_real_estate_scraper(zip_code: str):
 
         except Exception as e:
             await browser.close()
-            return {"error": f"Scraping failed: {str(e)}"}
+            return {"error": str(e)}
