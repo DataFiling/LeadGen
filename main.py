@@ -1,47 +1,32 @@
 import os
-from fastapi import FastAPI, HTTPException, Header
-from typing import Optional
+from fastapi import FastAPI, Request, HTTPException
+# This import style prevents the "module not callable" error
 from scraper import run_real_estate_scraper
 
-app = FastAPI(title="Real Estate Lead API")
-
-# Retrieve the secret from environment variables
-# In RapidAPI, this ensures only paying users can reach your server
-RAPIDAPI_PROXY_SECRET = os.getenv("RAPIDAPI_PROXY_SECRET")
+app = FastAPI()
 
 @app.get("/")
 async def health_check():
     return {"status": "active", "message": "Server is running"}
 
 @app.get("/leads/{zip_code}")
-async def get_leads(
-    zip_code: str, 
-    x_rapidapi_proxy_secret: Optional[str] = Header(None)
-):
-    # 1. Security check for RapidAPI
-    if RAPIDAPI_PROXY_SECRET and x_rapidapi_proxy_secret != RAPIDAPI_PROXY_SECRET:
-        raise HTTPException(status_code=403, detail="Unauthorized access")
+async def get_leads(zip_code: str, request: Request):
+    # 1. Security Check: Verify the RapidAPI Proxy Secret
+    expected_secret = os.getenv("RAPIDAPI_PROXY_SECRET")
+    received_secret = request.headers.get("X-RapidAPI-Proxy-Secret")
 
-    # 2. Basic ZIP code validation
-    if not zip_code.isdigit() or len(zip_code) != 5:
-        raise HTTPException(status_code=400, detail="Invalid ZIP code format")
+    if not expected_secret or received_secret != expected_secret:
+        raise HTTPException(status_code=403, detail="Unauthorized: Invalid Secret Key")
 
-    # 3. Trigger the scraper
+    # 2. Execution: Call the function imported from scraper.py
     try:
         data = await run_real_estate_scraper(zip_code)
-        
-        if "error" in data:
-            raise HTTPException(status_code=500, detail=data["error"])
-            
-        return {
-            "zip_code": zip_code,
-            "total_leads": len(data),
-            "results": data
-        }
+        return {"zip_code": zip_code, "leads": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", 8000))
+    # Railway provides the PORT variable; default to 8080 as seen in your logs
+    port = int(os.getenv("PORT", 8080))
     uvicorn.run(app, host="0.0.0.0", port=port)
