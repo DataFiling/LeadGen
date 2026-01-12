@@ -1,14 +1,11 @@
 import asyncio
 from playwright.async_api import async_playwright
-# Using the specific function import to avoid module conflicts
-from playwright_stealth import stealth
 
 async def run_scrape_logic(zip_code: str):
-    """
-    Handles the browser lifecycle and data extraction.
-    """
+    # Import stealth locally inside the function to ensure it's loaded correctly
+    from playwright_stealth import stealth
+    
     async with async_playwright() as p:
-        # Configuration for stable cloud deployment
         browser = await p.chromium.launch(
             headless=True,
             args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
@@ -20,19 +17,15 @@ async def run_scrape_logic(zip_code: str):
         
         page = await context.new_page()
         
-        # Explicitly apply the stealth function
+        # Apply stealth
         await stealth(page)
         
         url = f"https://www.realtor.com/realestateandhomes-search/{zip_code}"
         
         try:
-            # Navigate to the target ZIP code search
             await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-            
-            # Wait for property cards to be visible
             await page.wait_for_selector("[data-testid='property-card']", timeout=15000)
             
-            # Select the first 10 listings
             listings = await page.query_selector_all("[data-testid='property-card']")
             
             leads = []
@@ -41,10 +34,11 @@ async def run_scrape_logic(zip_code: str):
                 price_el = await listing.query_selector("[data-label='pc-price']")
                 
                 if address_el and price_el:
+                    addr = await address_el.inner_text()
+                    pri = await price_el.inner_text()
                     leads.append({
-                        "address": (await address_el.inner_text()).strip().replace('\n', ' '),
-                        "price": (await price_el.inner_text()).strip(),
-                        "status": "Active"
+                        "address": addr.strip().replace('\n', ' '),
+                        "price": pri.strip()
                     })
             
             await browser.close()
