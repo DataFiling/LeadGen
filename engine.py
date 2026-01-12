@@ -1,7 +1,6 @@
 import asyncio
 from playwright.async_api import async_playwright
-# Import the specific stealth function from the logic folder of the library
-from playwright_stealth.stealth import stealth
+import playwright_stealth
 
 async def run_scrape_logic(zip_code: str):
     async with async_playwright() as p:
@@ -11,16 +10,17 @@ async def run_scrape_logic(zip_code: str):
         )
         
         context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
         )
         
         page = await context.new_page()
         
-        # We are now calling the function we specifically imported above
+        # The library structure fix: call the 'stealth' function from the module
         try:
-            await stealth(page)
-        except Exception as e:
-            print(f"Stealth warning: {e}")
+            await playwright_stealth.stealth_async(page) 
+        except AttributeError:
+            # Fallback for different library versions
+            await playwright_stealth.stealth(page)
         
         url = f"https://www.realtor.com/realestateandhomes-search/{zip_code}"
         
@@ -43,7 +43,6 @@ async def run_scrape_logic(zip_code: str):
             
             await browser.close()
             return leads
-
         except Exception as e:
             await browser.close()
             return {"error": str(e)}
