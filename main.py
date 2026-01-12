@@ -1,34 +1,34 @@
-import asyncio
-from playwright.async_api import async_playwright
+from fastapi import FastAPI, HTTPException
+from scraper import run_scraper  # This imports the logic from your scraper.py
+import uvicorn
 
-async def scrape_real_estate(zip_code):
-    async with async_playwright() as p:
-        # Launching a stealthy browser to mimic a human 'Observer'
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
-        page = await context.new_page()
+app = FastAPI(title="Real Estate Lead API")
+
+@app.get("/")
+async def root():
+    return {"message": "API is Online. Awaiting Observation."}
+
+# This is exactly where your snippet goes, integrated with the scraper
+@app.get("/leads/{zip_code}")
+async def get_leads(zip_code: str):
+    # 1. Validation: Ensure the ZIP is 5 digits
+    if not zip_code.isdigit() or len(zip_code) != 5:
+        raise HTTPException(status_code=400, detail="Invalid ZIP code format.")
+    
+    # 2. Execution: Call the function inside scraper.py
+    data = await run_scraper(zip_code)
+    
+    # 3. Error Handling: If the scraper fails, let the user know
+    if isinstance(data, dict) and "error" in data:
+        raise HTTPException(status_code=500, detail=data["error"])
         
-        # Target a public search (e.g., Zillow/Redfin FSBO or local tax portal)
-        url = f"https://www.zillow.com/homes/{zip_code}_rb/"
-        await page.goto(url, wait_until="networkidle")
+    # 4. Response: Send the data back to RapidAPI
+    return {
+        "status": "success",
+        "zip_code": zip_code,
+        "count": len(data),
+        "leads": data
+    }
 
-        # Extracting property cards
-        # We use CSS selectors to find the 'Shells' containing property data
-        listings = await page.query_selector_all(".property-card")
-        results = []
-
-        for listing in listings:
-            address = await listing.query_selector("address")
-            price = await listing.query_selector("[data-test='property-card-price']")
-            
-            if address and price:
-                results.append({
-                    "address": await address.inner_text(),
-                    "price": await price.inner_text(),
-                    "status": "Potential Lead"
-                })
-
-        await browser.close()
-        return results
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
