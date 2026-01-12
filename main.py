@@ -1,7 +1,7 @@
 import os
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException
-import engine # This imports your engine.py file
+import engine 
 
 app = FastAPI()
 
@@ -19,12 +19,13 @@ async def get_leads(zip_code: str, request: Request):
         raise HTTPException(status_code=403, detail="Unauthorized")
 
     try:
-        # Call the function inside engine.py
+        # Direct call to engine function
         data = await engine.run_scrape_logic(zip_code)
         return {"zip_code": zip_code, "leads": data}
     except Exception as e:
-        return {"error": "Scraper Error", "details": str(e)}
+        return {"error": "Internal Server Error", "details": str(e)}
 
 if __name__ == "__main__":
+    # Ensure port 8080 is used as per your working logs
     port = int(os.getenv("PORT", 8080))
     uvicorn.run(app, host="0.0.0.0", port=port)
