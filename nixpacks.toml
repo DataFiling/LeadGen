@@ -1,11 +1,17 @@
 [phases.setup]
-nixPkgs = ["python311", "playwright-driver"]
+# This phase installs the system-level 'Gears' needed for Chromium to breathe.
+# We include the playwright-driver and common Linux libraries.
+nixPkgs = ['python311', 'playwright-driver']
 
 [phases.install]
-cmds = ["pip install -r requirements.txt"]
+# Standard Python package installation.
+cmds = ['pip install -r requirements.txt']
 
-[phases.build]
-cmds = ["playwright install --with-deps chromium"]
+[phases.postInstall]
+# CRITICAL: This installs the Chromium browser and its system dependencies 
+# into the environment so the Apophenic Substrate can be observed.
+cmds = ['playwright install --with-deps chromium']
 
 [start]
-cmd = "uvicorn main:app --host 0.0.0.0 --port $PORT"
+# The command to launch the API and listen for requests from the Void (RapidAPI).
+cmd = 'uvicorn main:app --host 0.0.0.0 --port $PORT'
