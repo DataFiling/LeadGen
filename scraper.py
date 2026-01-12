@@ -1,80 +1,50 @@
-import os
-import uvicorn
-from fastapi import FastAPI, HTTPException, Header
-from typing import Optional
-from dotenv import load_dotenv
+import asyncio
+from playwright.async_api import async_playwright
+from playwright_stealth import stealth_async
 
-# Import the 'Violent Execution' logic from your scraper file
-from scraper import run_scraper
-
-# Load the Forbidden Theory (Environment Variables)
-load_dotenv()
-
-app = FastAPI(
-    title="Kenotic Real Estate Lead API",
-    description="Extracting high-potentiality leads from the Apophenic Substrate.",
-    version="1.0.0"
-)
-
-# This secret should be set in your .env file or your hosting provider's dashboard.
-# It ensures only the RapidAPI 'Watchers' can trigger your King (Scraper).
-RAPIDAPI_PROXY_SECRET = os.getenv("RAPIDAPI_PROXY_SECRET", "default_secret_for_local_testing")
-
-@app.get("/")
-async def health_check():
-    """
-    Verification endpoint to ensure the Shell is active.
-    """
-    return {
-        "status": "online",
-        "message": "The Apophenic Substrate is stable. Awaiting Observation."
-    }
-
-@app.get("/leads/{zip_code}")
-async def get_leads(
-    zip_code: str, 
-    x_rapidapi_proxy_secret: Optional[str] = Header(None)
-):
-    """
-    The primary endpoint for generating leads.
-    """
-    # 1. Security Check: Block unauthorized entities from the Void
-    if x_rapidapi_proxy_secret != RAPIDAPI_PROXY_SECRET:
-        raise HTTPException(
-            status_code=403, 
-            detail="Unauthorized. Access is restricted to RapidAPI Proxy."
+async def run_real_estate_scraper(zip_code: str):
+    async with async_playwright() as p:
+        # Launch browser with stealth arguments
+        browser = await p.chromium.launch(headless=True)
+        
+        # Create a browser context with a modern User-Agent
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
         )
+        
+        page = await context.new_page()
+        
+        # Apply stealth to the page
+        await stealth_async(page)
+        
+        # Example Target: Using a generic search URL structure
+        url = f"https://www.realtor.com/realestateandhomes-search/{zip_code}"
+        
+        try:
+            # Navigate to the page and wait for content to load
+            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            
+            # Brief pause to allow JavaScript to render property cards
+            await asyncio.sleep(2)
+            
+            # Locate property cards (Selectors vary by site; these are common examples)
+            listings = await page.query_selector_all("[data-testid='property-card']")
+            
+            leads = []
+            for listing in listings[:10]: # Limit to 10 results per request
+                address = await listing.query_selector("[data-label='pc-address']")
+                price = await listing.query_selector("[data-label='pc-price']")
+                
+                if address and price:
+                    leads.append({
+                        "address": await address.inner_text(),
+                        "price": await price.inner_text(),
+                        "status": "Active"
+                    })
+            
+            await browser.close()
+            return leads
 
-    # 2. Validation: Ensure the ZIP code is a valid 5-digit string
-    if not zip_code.isdigit() or len(zip_code) != 5:
-        raise HTTPException(
-            status_code=400, 
-            detail="Invalid ZIP code. Please provide a 5-digit numeric code."
-        )
-
-    try:
-        # 3. Execution: Command the scraper to observe the target environment
-        data = await run_scraper(zip_code)
-
-        # Handle internal scraper errors (like network blockages)
-        if isinstance(data, dict) and "error" in data:
-            raise HTTPException(status_code=502, detail=f"Scraper Error: {data['error']}")
-
-        # 4. Return: Send the captured data back through the gateway
-        return {
-            "success": True,
-            "zip_code": zip_code,
-            "count": len(data),
-            "leads": data,
-            "note": "Apophenia processed. Contagious subjectivity avoided."
-        }
-
-    except Exception as e:
-        # Catch-all for unexpected 'Kenotic' shifts
-        raise HTTPException(status_code=500, detail=f"Internal Core Error: {str(e)}")
-
-if __name__ == "__main__":
-    # Launching the server on Port 8000
-    # Port will be overridden by Railway/Render using environment variables
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+        except Exception as e:
+            await browser.close()
+            return {"error": f"Scraping failed: {str(e)}"}
