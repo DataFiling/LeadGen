@@ -2,11 +2,13 @@
 nixPkgs = ['python311', 'playwright-driver']
 
 [phases.install]
-cmds = ['python -m venv .venv && .venv/bin/pip install -r requirements.txt']
-
-[phases.postInstall]
-# This is the critical line that downloads Chromium to the server
-cmds = ['playwright install --with-deps chromium']
+# Install requirements and then use the VENV version of playwright to install chromium
+cmds = [
+    'python -m venv .venv',
+    '.venv/bin/pip install -r requirements.txt',
+    '.venv/bin/python -m playwright install --with-deps chromium'
+]
 
 [start]
-cmd = 'python main.py'
+# Make sure we use the python inside the venv to start the app
+cmd = '.venv/bin/python main.py'
