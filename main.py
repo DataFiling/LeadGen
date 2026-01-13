@@ -6,33 +6,34 @@ from fastapi import FastAPI, Request, HTTPException
 from playwright.async_api import async_playwright
 
 # --- SELF-HEALING BROWSER INSTALL ---
-# This ensures Chromium is present even if the Railway build step skipped it
 try:
-    print("Checking for Chromium...")
     subprocess.run(["playwright", "install", "--with-deps", "chromium"], check=True)
 except Exception as e:
     print(f"Note: Browser install check finished: {e}")
 
 app = FastAPI()
 
-# --- THE SCRAPER LOGIC ---
 async def run_scrape_logic(zip_code: str):
     async with async_playwright() as p:
-        # Launch browser with settings for low-memory environments
+        # --- UPGRADED STEALTH LAUNCH ---
         browser = await p.chromium.launch(
             headless=True, 
             args=[
                 "--no-sandbox", 
                 "--disable-setuid-sandbox", 
                 "--disable-dev-shm-usage",
-                "--single-process" # Helps on low RAM plans
+                "--disable-blink-features=AutomationControlled" # NEW: Hides bot status
             ]
         )
         
         context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+            viewport={'width': 1920, 'height': 1080} # NEW: Mimics a real desktop screen
         )
         page = await context.new_page()
+        
+        # NEW: Extra stealth script to hide playwright traces
+        await page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         
         url = f"https://www.realtor.com/realestateandhomes-search/{zip_code}"
         
@@ -40,7 +41,14 @@ async def run_scrape_logic(zip_code: str):
             # Go to the website
             await page.goto(url, wait_until="domcontentloaded", timeout=60000)
             
-            # Wait for house cards to appear
+            # --- NEW: DIAGNOSTIC PRINT ---
+            # Look at your Railway logs after running this. If it says "Pardon Our Interruption", we are blocked.
+            print(f"Scanning {zip_code}... Page Title: {await page.title()}")
+            
+            # NEW: Small human-like pause
+            await asyncio.sleep(3) 
+            
+            # Wait for house cards
             await page.wait_for_selector("[data-testid='property-card']", timeout=20000)
             
             listings = await page.query_selector_all("[data-testid='property-card']")
@@ -62,6 +70,11 @@ async def run_scrape_logic(zip_code: str):
             return leads
 
         except Exception as e:
+            # NEW: Takes a screenshot of the error so we can see why it failed
+            try:
+                print(f"Scrape failed. Current Title: {await page.title()}")
+            except:
+                pass
             await browser.close()
             return {"error": "Scrape failed", "details": str(e)}
 
@@ -73,7 +86,6 @@ async def health_check():
 
 @app.get("/leads/{zip_code}")
 async def get_leads(zip_code: str, request: Request):
-    # Security Check
     expected_secret = os.getenv("RAPIDAPI_PROXY_SECRET")
     received_secret = request.headers.get("X-RapidAPI-Proxy-Secret")
 
